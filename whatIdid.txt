@@ -1,0 +1,18 @@
+Created a folder for the project
+created a virtual environment using "python -m venv env" command {this created a virtual environment named env}
+enabled the virtual environment using "env/scripts/activate"
+installing twitter_scrapper package- [This packagee uses bs4 (beautiful soup 4) for extraction.]
+
+
+function get_tweets(query: str [, pages: int]) -> dictionary
+You can get tweets of profile or parse tweets from hashtag, get_tweets takes username or hashtag on first parameter as string and how much pages you want to scan on second parameter as integer.
+
+ťhis library didn't work cuz its outdated
+
+tried to find newer library similar to this through chatgpt
+it found twint which requires MS Visual Studio Build Tools which i downloaded thourgh the link that error showed
+
+its a 9 gb file. meanwhile I'll try to work on other part which is nlp.
+
+
+downlloaded a jypyter notebook file which has code for the project. found this code on kaggle
