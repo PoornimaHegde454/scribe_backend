@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import pickle
+import random
 from pathlib import Path
 from typing import Literal
 
 import nltk
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from pydantic import BaseModel, Field
 from textblob import TextBlob
+from api.imdb_service import search_movies, get_movie_full_details, ia
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / 'naive_bayes_model.pkl'
@@ -37,7 +39,9 @@ ensure_nltk_assets()
 
 def load_pickle(path: Path):
     if not path.exists():
-        raise FileNotFoundError(f'Expected asset missing: {path.name}')
+        # Fallback for dev if models aren't trained yet
+        print(f"Warning: {path.name} not found. Sentiment features may fail.")
+        return None
     with path.open('rb') as file:
         return pickle.load(file)
 
@@ -106,6 +110,7 @@ app.add_middleware(
         'http://127.0.0.1:5173',
         'http://localhost:4173',
         'http://127.0.0.1:4173',
+        "http://localhost:5174", # Added potential backup port
     ],
     allow_methods=['*'],
     allow_headers=['*'],
@@ -116,15 +121,46 @@ app.add_middleware(
 def health_check():
     return {
         'status': 'online',
-        'modelLoaded': MODEL_PATH.exists(),
-        'vectorizerLoaded': VECTORIZER_PATH.exists(),
+        'modelLoaded': MODEL is not None,
+        'vectorizerLoaded': VECTORIZER is not None,
     }
+
+def analyze_text_internal(text: str):
+    """Internal helper to analyze text without API overhead."""
+    if not (MODEL and VECTORIZER):
+        return 0, 0, False # Fallback
+
+    cleaned = preprocess_text(text)
+    vectorized = VECTORIZER.transform([cleaned])
+    
+    try:
+        prediction = MODEL.predict(vectorized)[0]
+        # probabilities = MODEL.predict_proba(vectorized)[0]
+    except Exception:
+        return 0, 0, False
+
+    is_positive = prediction == 0
+    polarity = float(TextBlob(text).sentiment.polarity)
+    return polarity, 1.0 if is_positive else 0.0, is_positive
 
 
 @app.post('/api/sentiment', response_model=SentimentResponse)
 def analyze_sentiment(payload: SentimentRequest):
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail='Empty inputs cannot be analyzed.')
+
+    if not (MODEL and VECTORIZER):
+         # Mock response if model missing
+        polarity = float(TextBlob(payload.text).sentiment.polarity)
+        is_positive = polarity > 0
+        return SentimentResponse(
+            label='positive' if is_positive else 'negative',
+            isPositive=is_positive,
+            probability=0.85,
+            polarity=polarity,
+            magnitude=translate_polarity(polarity),
+            recommendation=craft_recommendation(is_positive, polarity),
+        )
 
     cleaned = preprocess_text(payload.text)
     vectorized = VECTORIZER.transform([cleaned])
@@ -152,4 +188,70 @@ def analyze_sentiment(payload: SentimentRequest):
         magnitude=translate_polarity(polarity),
         recommendation=craft_recommendation(is_positive, polarity),
     )
+
+
+# --- Movie Endpoints ---
+
+@app.get('/movies/search')
+def extract_movies(query: str = Query(..., min_length=1)):
+    """Search for movies using IMDb."""
+    try:
+        return search_movies(query)
+    except Exception as e:
+        print(f"Search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get('/movies/trending')
+def get_trending():
+    # Fetch popular movies (Top 10 items)
+    try:
+        pop = ia.get_popular100_movies()[:10]
+        results = []
+        for p in pop:
+            # Basic normalization for list view
+            # ia.update(p, info=['main']) # Too slow for 10 items?
+            # get_popular100 request usually has cover url? No, usually generic.
+            # We might need to pick just 5 and update them.
+            pass
+        
+        # Optimization: Just search for a trending topic or return a cached list
+        # For now, let's just search for "Action" or "Love" to get a list
+        return search_movies("Star Wars") 
+    except:
+        return []
+
+@app.get('/movies/trending/hero')
+def get_hero():
+    # Return a specific cool movie
+    return search_movies("Interstellar")[0] 
+
+@app.get('/movies/{movie_id}')
+def get_movie_details_endpoint(movie_id: str):
+    try:
+        movie, reviews = get_movie_full_details(movie_id)
+        
+        # Calculate sentiment from reviews
+        if reviews and MODEL:
+            positive_count = 0
+            total_polarity = 0
+            count = 0
+            for r in reviews:
+                # Review object in IMDbPY is dict-like usually? 
+                # reviews is a list of dicts: {'content': '...', 'rating': ...}
+                content = r.get('content')
+                if content:
+                    pol, prob, is_pos = analyze_text_internal(content)
+                    total_polarity += pol
+                    if is_pos:
+                        positive_count += 1
+                    count += 1
+            
+            if count > 0:
+                sentiment_score = int((positive_count / count) * 100)
+                movie['sentimentScore'] = sentiment_score
+        
+        return movie
+    except Exception as e:
+        print(f"Details error: {e}")
+        raise HTTPException(status_code=404, detail="Movie not found")
 

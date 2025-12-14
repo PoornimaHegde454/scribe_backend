@@ -10,6 +10,14 @@ const navItems = [
 export const Navbar = () => {
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  // Add scroll listener
+  if (typeof window !== 'undefined') {
+    window.onscroll = () => {
+      setIsScrolled(window.pageYOffset > 0)
+    }
+  }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -19,22 +27,26 @@ export const Navbar = () => {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/5 bg-black/70 backdrop-blur-lg">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 lg:px-0">
+    <header 
+      className={`fixed top-0 z-40 w-full transition-colors duration-500 ${
+        isScrolled ? 'bg-[#141414]' : 'bg-gradient-to-b from-black/80 to-transparent'
+      }`}
+    >
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-8">
         <Link
           to="/"
-          className="text-lg font-semibold tracking-[0.3em] text-white hover:text-red-400"
+          className="text-2xl font-bold tracking-tighter text-[#E50914] hover:text-[#ff0a16]"
         >
-          CINE<span className="text-sky-400">PULSE</span>
+          CINEPULSE
         </Link>
-        <nav className="hidden gap-8 text-sm font-semibold text-white/70 md:flex">
+        <nav className="hidden gap-6 text-sm font-medium md:flex">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `uppercase tracking-[0.2em] transition ${
-                  isActive ? 'text-white' : 'hover:text-white'
+                `transition ${
+                  isActive ? 'text-white font-bold' : 'text-[#e5e5e5] hover:text-[#b3b3b3]'
                 }`
               }
             >
@@ -42,25 +54,34 @@ export const Navbar = () => {
             </NavLink>
           ))}
         </nav>
-        <form
-          onSubmit={handleSubmit}
-          className="hidden items-center gap-3 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-white/70 lg:flex"
-        >
-          <FiSearch className="text-white/50" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="bg-transparent text-white placeholder:text-white/40 focus:outline-none"
-            placeholder="Search the multiverse"
-          />
-        </form>
-        <button
-          type="button"
-          onClick={() => navigate('/search')}
-          className="rounded-full border border-white/20 px-4 py-2 text-sm text-white/80 md:hidden"
-        >
-          Search
-        </button>
+        <div className="flex items-center gap-4">
+            <form
+            onSubmit={handleSubmit}
+            className={`hidden items-center gap-2 border transition-all duration-300 ${
+                search ? 'border-white bg-black/80 px-2' : 'border-transparent px-0'
+            } lg:flex`}
+            >
+            <button type="button" onClick={() => document.getElementById('search-input')?.focus()}>
+                <FiSearch className="h-6 w-6 text-white" />
+            </button>
+            <input
+                id="search-input"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className={`bg-transparent text-sm text-white placeholder:text-gray-400 focus:outline-none transition-all duration-300 ${
+                search ? 'w-64' : 'w-0 focus:w-64'
+                }`}
+                placeholder="Titles, people, genres"
+            />
+            </form>
+             <button
+            type="button"
+            onClick={() => navigate('/search')}
+            className="text-white lg:hidden"
+            >
+            <FiSearch className="h-6 w-6" />
+            </button>
+        </div>
       </div>
     </header>
   )
